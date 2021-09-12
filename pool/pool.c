@@ -849,7 +849,7 @@ static void service_ctxs_destroy(struct m0_pools_common *pc)
 			rc = m0_reqh_service_disconnect_wait(ctx);
 			M0_ASSERT_INFO(M0_IN(rc, (0, -ECANCELED, -ETIMEDOUT,
 						  -EINVAL, -EHOSTUNREACH,
-						  -ECONNREFUSED, -EIO)),
+						  -ECONNREFUSED, -EIO, -EPIPE)),
 				       "rc=%d", rc);
 		}
 		m0_reqh_service_ctx_destroy(ctx);
@@ -1724,7 +1724,7 @@ M0_INTERNAL int m0_pool_version_append(struct m0_pools_common  *pc,
 		if (rc != 0)
 			return M0_ERR(rc);
 	}
-	M0_ASSERT(cp != NULL); 
+	M0_ASSERT(cp != NULL);
 	p = pool_find(pc, &cp->pl_obj.co_id);
 	M0_ASSERT(p != NULL);
 
