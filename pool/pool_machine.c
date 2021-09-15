@@ -630,15 +630,13 @@ M0_INTERNAL int m0_poolmach_state_transit(struct m0_poolmach       *pm,
 		}
 		M0_ASSERT(M0_IN(old_state, (M0_PNDS_OFFLINE,
 					    M0_PNDS_SNS_REBALANCING)));
-		M0_CNT_DEC(state->pst_nr_failures);
-		M0_LOG(M0_INFO, FID_F": nr_failures %d SHIPRA 1", FID_P(&pm->pm_pver->pv_id), state->pst_nr_failures);
-		if (pool_failed_devs_tlink_is_in(pd))
+		if (pool_failed_devs_tlink_is_in(pd)) {
 			pool_failed_devs_tlist_del(pd);
+			M0_CNT_DEC(state->pst_nr_failures);
+		}
 		pool_failed_devs_tlink_fini(pd);
 		break;
 	case M0_PNDS_OFFLINE:
-		M0_CNT_INC(state->pst_nr_failures);
-		M0_LOG(M0_INFO, FID_F": nr_failures %d SHIPRA 2", FID_P(&pm->pm_pver->pv_id), state->pst_nr_failures);
 		M0_ASSERT(!pool_failed_devs_tlink_is_in(pd));
 		break;
 	case M0_PNDS_FAILED:
@@ -651,13 +649,14 @@ M0_INTERNAL int m0_poolmach_state_transit(struct m0_poolmach       *pm,
 				      M0_PNDS_OFFLINE)))
 			spare_usage_arr_update(pm, event);
 		if (!M0_IN(old_state, (M0_PNDS_OFFLINE, M0_PNDS_SNS_REPAIRING))) {
-			M0_CNT_INC(state->pst_nr_failures);
-			M0_LOG(M0_INFO, FID_F": nr_failures %d SHIPRA 3", FID_P(&pm->pm_pver->pv_id), state->pst_nr_failures);
+			//M0_CNT_INC(state->pst_nr_failures);
 		}
 		if (!pool_failed_devs_tlink_is_in(pd) &&
-		    !disk_is_in(&pool->po_failed_devices, pd))
+		    !disk_is_in(&pool->po_failed_devices, pd)) {
 			pool_failed_devs_tlist_add_tail(
 				&pool->po_failed_devices, pd);
+			M0_CNT_INC(state->pst_nr_failures);
+		}
 		break;
 	case M0_PNDS_SNS_REPAIRING:
 	case M0_PNDS_SNS_REPAIRED:
@@ -683,7 +682,6 @@ M0_INTERNAL int m0_poolmach_state_transit(struct m0_poolmach       *pm,
 		if (!pool_failed_devs_tlink_is_in(pd) &&
 		    !disk_is_in(&pool->po_failed_devices, pd)) {
 			M0_CNT_INC(state->pst_nr_failures);
-			M0_LOG(M0_INFO, FID_F": nr_failures %d SHIPRA 4", FID_P(&pm->pm_pver->pv_id), state->pst_nr_failures);
 			pool_failed_devs_tlist_add_tail(
 				&pool->po_failed_devices, pd);
 		}
@@ -955,7 +953,6 @@ M0_INTERNAL void m0_poolmach_failvec_apply(struct m0_poolmach *pm,
 			if (!pool_failed_devs_tlink_is_in(pd) &&
 			    !disk_is_in(&pool->po_failed_devices, pd)) {
 				M0_CNT_INC(state->pst_nr_failures);
-				M0_LOG(M0_INFO, FID_F": nr_failures %d SHIPRA 7", FID_P(&pm->pm_pver->pv_id), state->pst_nr_failures);
 				pool_failed_devs_tlist_add_tail(
 						&pool->po_failed_devices, pd);
 			}
