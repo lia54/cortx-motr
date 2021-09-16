@@ -82,10 +82,10 @@ enum m0_fab__libfab_params {
 	/** Max number of active work requests for TCP/Socket provider */
 	FAB_TCP_SOCK_MAX_QUEUE_SIZE    = 1024,
 	/** Max number of iov that can be sent in fi_sendmsg() for TCP/Socket */
-	FAB_TCP_SOCK_MAX_IOV_PER_TX    = 4,
+	FAB_TCP_SOCK_MAX_IOV_PER_TX    = 8,
 
 	/** Array size of iovec per tx (select max of tcp and verbs) */
-	FAB_MAX_IOV_PER_TX             = 4,
+	FAB_MAX_IOV_PER_TX             = 8,
 
 	/** Max segment size for rpc buffer ( 1MB but can be changed ) */
 	FAB_MAX_RPC_SEG_SIZE           = (1 << 20),
