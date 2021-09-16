@@ -65,9 +65,9 @@ enum m0_fab__libfab_params {
 	/** Key used for memory registration. */
 	FAB_MR_KEY                     = 0xABCD,
 	/** Max number of IOV in read/write command for Verbs */
-	FAB_VERBS_IOV_MAX              = 1,
+	FAB_VERBS_IOV_MAX              = 128,
 	/** Max segment size for bulk buffers for Verbs */
-	FAB_VERBS_MAX_BULK_SEG_SIZE    = 1048576,
+	FAB_VERBS_MAX_BULK_SEG_SIZE    = 131072,
 	/** Max number of active work requests for Verbs */
 	FAB_VERBS_MAX_QUEUE_SIZE       = 224,
 	/** Max number of iov that can be sent in fi_sendmsg() for Verbs */
