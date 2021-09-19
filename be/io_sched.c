@@ -201,7 +201,9 @@ M0_INTERNAL void m0_be_io_sched_add(struct m0_be_io_sched *sched,
 	m0_be_op_init(&io->bio_sched_op);
 	m0_be_op_callback_set(&io->bio_sched_op, &be_io_sched_cb,
 			      io, M0_BOS_GC);
+	m0_be_op_make_set_and(op);
 	m0_be_op_set_add(op, &io->bio_sched_op);
+	m0_be_op_set_add_finish(op);
 	be_io_sched_launch_next(sched);
 }
 
