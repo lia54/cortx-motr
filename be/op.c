@@ -158,7 +158,6 @@ M0_INTERNAL void m0_be_op_reset(struct m0_be_op *op)
 
 	m0_be_op_lock(op);
 	be_op_sm_fini(op);
-	++op->bo_generation;
 	m0_be_op_unlock(op);
 	M0_ASSERT(op->bo_parent == NULL);
 	M0_ASSERT(bos_tlist_is_empty(&op->bo_children));
@@ -170,60 +169,17 @@ M0_INTERNAL void m0_be_op_reset(struct m0_be_op *op)
 	be_op_sm_init(op);
 }
 
-static struct m0_be_op *be_op_parent_check(struct m0_be_op *op,
-                                           long            *generation)
-{
-	struct m0_be_op *parent       = op->bo_parent;
-	bool             first_child  = false;
-	bool             last_child   = false;
-
-	M0_LOG(M0_DEBUG, "op=%p parent=%p", op, parent);
-
-	if (parent == NULL)
-		return NULL;
-
-	M0_PRE(m0_be_op_is_locked(parent));
-	M0_PRE(m0_be_op_is_locked(op));
-	M0_PRE(*generation == -1);
-
-	if (parent->bo_set_addition_finished &&
-	    parent->bo_set_triggered_by == NULL) {
-		first_child = parent->bo_kind == M0_BE_OP_KIND_SET_OR &&
-			      parent->bo_set_triggered_by == NULL;
-		if (parent->bo_kind == M0_BE_OP_KIND_SET_AND)
-			last_child = be_op_set_del(parent, op);
-		if (first_child || last_child) {
-			M0_LOG(M0_DEBUG, "%p->bo_set_triggered_by = %p "
-			       "first_child=%d last_child=%d "
-			       "%p->bo_sm.sm_state=%d %p->bo_sm.sm_state=%d",
-			       parent, op, !!first_child, !!last_child,
-			       parent, parent->bo_sm.sm_state,
-			       op, op->bo_sm.sm_state);
-			*generation = parent->bo_generation;
-			parent->bo_set_triggered_by = op;
-		}
-
-		// XXX comment it
-		M0_LOG(M0_DEBUG, "first_child=%d last_child=%d",
-		       !!first_child, !!last_child);
-
-		if (first_child || last_child)
-			return parent;
-	}
-	return NULL;
-}
-
 static void be_op_state_change(struct m0_be_op     *op,
                                enum m0_be_op_state  state,
-                               long                 generation)
+                               long                 generation,
+                               struct m0_be_op     *trigger)
 {
 	struct m0_be_op *child;
 	struct m0_be_op *parent = NULL;
-	struct m0_be_op *parent_tmp;
 	m0_be_op_cb_t    cb_gc = NULL;
 	void            *cb_gc_param;
 	long             parent_generation = -1;
-	long             op_generation;
+	bool             last_child;
 
 	// XXX comment
 	M0_ENTRY("op=%p state=%s bo_kind=%d generation=%ld", op,
@@ -232,19 +188,6 @@ static void be_op_state_change(struct m0_be_op     *op,
 	M0_PRE(M0_IN(state, (M0_BOS_ACTIVE, M0_BOS_DONE)));
 
 	m0_be_op_lock(op);
-	parent_tmp = op->bo_parent;
-	m0_be_op_unlock(op);
-	if (parent_tmp != NULL && state == M0_BOS_DONE) {
-		/* see m0_be_op_set_add() for the lock order */
-		m0_be_op_lock(parent_tmp);
-		m0_be_op_lock(op);
-		M0_LOG(M0_DEBUG, "first parent check op=%p parent_tmp=%p",
-		       op, parent_tmp);
-		parent = be_op_parent_check(op, &parent_generation);
-		m0_be_op_unlock(parent_tmp);
-	} else {
-		m0_be_op_lock(op);
-	}
 	if (generation != -1 && generation != op->bo_generation) {
 		M0_LOG(M0_ALWAYS, "generation mismatch for op=%p: "
 		       "generation=%ld != op->bo_generation=%ld",
@@ -252,35 +195,57 @@ static void be_op_state_change(struct m0_be_op     *op,
 		m0_be_op_unlock(op);
 		return;
 	}
-
-	M0_ASSERT(ergo(op->bo_kind != M0_BE_OP_KIND_NORMAL,
-	               equi(state == M0_BOS_DONE,
-			    op->bo_set_triggered_by != NULL)));
-	if (M0_IN(op->bo_kind, (M0_BE_OP_KIND_SET_AND, M0_BE_OP_KIND_SET_OR)) &&
-	    state == M0_BOS_DONE) {
-		M0_ASSERT(op->bo_set_addition_finished);
-		/*
-		 * This loop removes all children in 2 cases: the op set is
-		 * M0_BE_OP_KIND_SET_OR or this function is called from
-		 * m0_be_op_set_add_finish() for M0_BE_OP_KIND_SET_AND.
-		 *
-		 * For M0_BE_OP_KIND_SET_AND sets that are triggered outside of
-		 * m0_be_op_set_add_finis() the removal bappens in another
-		 * be_op_set_del() call above.
-		 */
+	M0_ASSERT(ergo(M0_IN(op->bo_kind, (M0_BE_OP_KIND_SET_AND,
+					   M0_BE_OP_KIND_SET_OR)),
+	               _0C(equi(state == M0_BOS_DONE, generation != -1)) &&
+	               _0C(op->bo_set_triggered_by != NULL) &&
+	               _0C(trigger != NULL)));
+	if (op->bo_set_triggered_by != trigger) {
+		M0_LOG(M0_ALWAYS, "another trigger for op set: "
+		       "op=%p op->bo_set_triggered_by=%p trigger=%p",
+		       op, op->bo_set_triggered_by, trigger);
+		m0_be_op_unlock(op);
+		return;
+	}
+	M0_ASSERT(ergo(op->bo_kind == M0_BE_OP_KIND_SET_AND &&
+	               state == M0_BOS_DONE,
+	               bos_tlist_is_empty(&op->bo_children)));
+	M0_ASSERT(ergo(M0_IN(op->bo_kind, (M0_BE_OP_KIND_SET_AND,
+	                                   M0_BE_OP_KIND_SET_OR)),
+	                     op->bo_set_addition_finished));
+	if (state == M0_BOS_DONE && op->bo_kind == M0_BE_OP_KIND_SET_OR) {
 		while ((child = bos_tlist_head(&op->bo_children)) != NULL) {
+			m0_be_op_unlock(op);
 			m0_be_op_lock(child);
-			be_op_set_del(op, child);
+			m0_be_op_lock(op);
+			if (child->bo_parent != NULL) {
+				M0_ASSERT(child->bo_parent == op);
+				be_op_set_del(op, child);
+			}
 			m0_be_op_unlock(child);
 		}
 	}
-	M0_ASSERT(bos_tlist_is_empty(&op->bo_children));
+	if (op->bo_parent != NULL && state == M0_BOS_DONE) {
+		m0_be_op_lock(op->bo_parent);
+		last_child = be_op_set_del(op->bo_parent, op);
+		if (op->bo_parent->bo_set_addition_finished &&
+		    (op->bo_parent->bo_kind == M0_BE_OP_KIND_SET_OR ||
+		     (op->bo_parent->bo_kind == M0_BE_OP_KIND_SET_AND &&
+		      last_child))) {
+			parent = op->bo_parent;
+			parent_generation = parent->bo_generation;
+			parent->bo_set_triggered_by = op;
+		}
+		m0_be_op_unlock(parent);
+	}
+
 	// XXX comment
 	M0_LOG(M0_DEBUG, "op=%p parent=%p %s -> %s", op, parent,
 	       m0_sm_state_name(&op->bo_sm, op->bo_sm.sm_state),
 	       m0_sm_state_name(&op->bo_sm, state));
 	if (state == M0_BOS_ACTIVE && op->bo_cb_active != NULL)
 		op->bo_cb_active(op, op->bo_cb_active_param);
+	++op->bo_generation;
 	m0_sm_state_set(&op->bo_sm, state);
 	if (state == M0_BOS_DONE && op->bo_cb_done != NULL)
 		op->bo_cb_done(op, op->bo_cb_done_param);
@@ -288,35 +253,17 @@ static void be_op_state_change(struct m0_be_op     *op,
 		cb_gc       = op->bo_cb_gc;
 		cb_gc_param = op->bo_cb_gc_param;
 	}
-	parent_tmp = parent == NULL ? op->bo_parent : NULL;
-	op_generation = op->bo_generation;
 	m0_be_op_unlock(op);
-
-	if (false && parent_tmp != NULL && state == M0_BOS_DONE) {
-		/* see m0_be_op_set_add() for the lock order */
-		m0_be_op_lock(parent_tmp);
-		m0_be_op_lock(op);
-		if (op_generation != op->bo_generation) {
-			M0_LOG(M0_ALWAYS, "generation mismatch for op=%p: "
-			       "op_generation=%ld != op->bo_generation=%ld",
-			       op, op_generation, op->bo_generation);
-		} else {
-			M0_LOG(M0_DEBUG, "second parent check op=%p "
-			       "parent_tmp=%p",
-			       op, parent_tmp);
-			parent = be_op_parent_check(op, &parent_generation);
-		}
-		m0_be_op_unlock(op);
-		m0_be_op_unlock(parent_tmp);
-	}
 
 	/* if someone set bo_cb_gc then it's safe to call GC function here */
 	if (cb_gc != NULL)
 		cb_gc(op, cb_gc_param);
 
 	if (parent != NULL) {
-		M0_LOG(M0_DEBUG, "%p -> %d", parent, state);
-		be_op_state_change(parent, state, parent_generation);
+		M0_LOG(M0_DEBUG, "parent=%p -> state=%d: "
+		       "parent_generation=%ld op=%p", parent, state,
+		       parent_generation, op);
+		be_op_state_change(parent, state, parent_generation, op);
 	}
 }
 
@@ -324,14 +271,14 @@ M0_INTERNAL void m0_be_op_active(struct m0_be_op *op)
 {
 	M0_PRE(op->bo_kind == M0_BE_OP_KIND_NORMAL);
 
-	be_op_state_change(op, M0_BOS_ACTIVE, -1);
+	be_op_state_change(op, M0_BOS_ACTIVE, -1, NULL);
 }
 
 M0_INTERNAL void m0_be_op_done(struct m0_be_op *op)
 {
 	M0_PRE(op->bo_kind == M0_BE_OP_KIND_NORMAL);
 
-	be_op_state_change(op, M0_BOS_DONE, -1);
+	be_op_state_change(op, M0_BOS_DONE, -1, NULL);
 }
 
 M0_INTERNAL bool m0_be_op_is_done(struct m0_be_op *op)
@@ -426,9 +373,12 @@ M0_INTERNAL void m0_be_op_set_add(struct m0_be_op *parent,
 				  struct m0_be_op *child)
 {
 	M0_ENTRY("parent=%p child=%p", parent, child);
-	/* lock order here and in be_op_state_change() should be the same */
-	m0_be_op_lock(parent);
+	/*
+	 * Lock order here, in be_op_state_change() and in
+	 * m0_be_op_set_add_finish() should be the same.
+	 */
 	m0_be_op_lock(child);
+	m0_be_op_lock(parent);
 
 	M0_ASSERT(M0_IN(parent->bo_kind, (M0_BE_OP_KIND_SET_AND,
 	                                  M0_BE_OP_KIND_SET_OR)));
@@ -437,46 +387,55 @@ M0_INTERNAL void m0_be_op_set_add(struct m0_be_op *parent,
 
 	be_op_set_add(parent, child);
 
-	m0_be_op_unlock(child);
 	m0_be_op_unlock(parent);
+	m0_be_op_unlock(child);
 	M0_LEAVE("parent=%p child=%p", parent, child);
 }
 
 M0_INTERNAL void m0_be_op_set_add_finish(struct m0_be_op *op)
 {
 	struct m0_be_op *child;
+	struct m0_be_op *trigger;
 	long             generation;
-	int              nr_done = 0;
-	int              nr      = 0;
 
 	M0_ENTRY("op=%p", op);
 	M0_ASSERT(M0_IN(op->bo_kind, (M0_BE_OP_KIND_SET_AND,
 	                              M0_BE_OP_KIND_SET_OR)));
 	m0_be_op_lock(op);
-	op->bo_set_addition_finished = true;
 	M0_ASSERT(!bos_tlist_is_empty(&op->bo_children));
+	generation = op->bo_generation;
 	m0_tl_for(bos, &op->bo_children, child) {
-		++nr;
+		m0_be_op_unlock(op);
+		/**
+		 * Lock order here should be the same as in m0_be_op_set_add()
+		 * and in be_op_state_change().
+		 */
 		m0_be_op_lock(child);
-		if (m0_be_op_is_done(child)) {
-			++nr_done;
+		m0_be_op_lock(op);
+		if (op->bo_generation == generation) {
+			/* extra parentheses to satisfy -Werror=parentheses */
+			if (m0_be_op_is_done(child) &&
+			    (op->bo_kind == M0_BE_OP_KIND_SET_OR ||
+			     ((op->bo_kind == M0_BE_OP_KIND_SET_AND) &&
+			      be_op_set_del(op, child)))) {
+				op->bo_set_triggered_by = child;
+				trigger = child;
+			}
+		} else {
+			M0_LEAVE("generation has changed: "
+			         "generation=%lu %p->bo_generation=%lu",
+			         generation, op, op->bo_generation);
+			m0_be_op_unlock(op);
+			m0_be_op_unlock(child);
+			return;
 		}
 		m0_be_op_unlock(child);
-		if (nr_done == 1 && op->bo_kind == M0_BE_OP_KIND_SET_OR) {
-			M0_ASSERT(op->bo_set_triggered_by == NULL);
-			M0_LOG(M0_DEBUG, "%p->bo_set_triggered_by = %p",
-			       op, child);
-			generation = op->bo_generation;
-			op->bo_set_triggered_by = child;
-			break;
-		}
 	} m0_tl_endfor;
+	op->bo_set_addition_finished = true;
 	m0_be_op_unlock(op);
 
-	/* extra parentheses to satisfy -Werror=parentheses */
-	if ((op->bo_kind == M0_BE_OP_KIND_SET_AND && nr_done == nr) ||
-	    (op->bo_kind == M0_BE_OP_KIND_SET_OR && nr_done == 1))
-		be_op_state_change(op, M0_BOS_DONE, generation);
+	if (trigger != NULL)
+		be_op_state_change(op, M0_BOS_DONE, generation, trigger);
 	M0_LEAVE("op=%p", op);
 }
 
