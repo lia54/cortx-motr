@@ -1460,6 +1460,7 @@ static int stob_ad_read_prepare(struct m0_stob_io        *io,
 		if (seg->ee_val == AET_HOLE) {
 			if (io->si_flags & SIF_NOHOLE) {
 				rc = M0_ERR(-EIO);
+				M0_ASSERT(0);
 				break;
 			}
 			/*
