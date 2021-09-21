@@ -2102,8 +2102,10 @@ static int stob_io_create(struct m0_fom *fom)
 
 		stio = &siod->siod_stob_io;
 		m0_stob_io_init(stio);
-		if (fom_obj->fcrw_flags & M0_IO_FLAG_NOHOLE)
+		if (fom_obj->fcrw_flags & M0_IO_FLAG_NOHOLE) {
+			M0_LOG(M0_DEBUG, "TEST2: SIF_NOHOLE is made on here");
 			stio->si_flags |= SIF_NOHOLE;
+		}
 		stio->si_fol_frag = &siod->siod_fol_frag;
 
 		todo = rwfop->crw_desc.id_descs[i].bdd_used >>

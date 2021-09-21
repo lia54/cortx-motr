@@ -522,6 +522,7 @@ static int obj_io_init(struct m0_obj      *obj,
 	ioo->ioo_ext = *ext;
 	ioo->ioo_flags = flags;
 	ioo->ioo_flags |= M0_OOF_SYNC;
+	M0_LOG(M0_DEBUG,"TEST5: flags here are flags %u ioo_flags %u", flags, ioo->ioo_flags);
 	if (M0_IN(opcode, (M0_OC_READ, M0_OC_WRITE))) {
 		ioo->ioo_data = *data;
 		ioo->ioo_attr_mask = mask;

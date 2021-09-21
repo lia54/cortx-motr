@@ -1035,8 +1035,10 @@ static int target_ioreq_iofops_prepare(struct target_ioreq *ti,
 		 * degraded read expects zero-filled units from server side.
 		 */
 		if (ioreq_sm_state(ioo) != IRS_DEGRADED_READING &&
-		    ioo->ioo_flags & M0_OOF_NOHOLE)
+		    ioo->ioo_flags & M0_OOF_NOHOLE) {
 			rw_fop->crw_flags |= M0_IO_FLAG_NOHOLE;
+			M0_LOG(M0_DEBUG, "TEST1: M0_OOF_NOHOLE Is on, M0_IO_FLAG_NOHOLE is made on");
+		}
 
 		/* Assign the checksum buffer for traget */
 		if (filter == PA_DATA && ioo->ioo_attr.ov_vec.v_nr) {

@@ -1459,8 +1459,8 @@ static int stob_ad_read_prepare(struct m0_stob_io        *io,
 			(unsigned long)seg->ee_val); */
 		if (seg->ee_val == AET_HOLE) {
 			if (io->si_flags & SIF_NOHOLE) {
+				M0_LOG(M0_DEBUG, "TEST3: SIF_NOHOLE is found to be true");
 				rc = M0_ERR(-EIO);
-				M0_ASSERT(0);
 				break;
 			}
 			/*
