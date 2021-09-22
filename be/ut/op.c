@@ -898,7 +898,7 @@ static void be_ut_op_set_random_thread_func(void *param)
 		m0_be_op_wait(wait_op);
 		op = m0_be_op_set_triggered_by(wait_op);
 		if (counter % (cfg->bosrt_iter_per_pair / 2) <
-		    cfg->bosrt_iter_per_pair / 4) {
+		    cfg->bosrt_iter_per_pair / 3) {
 			m0_be_op_reset(wait_op);
 		} else {
 			wait_op = be_ut_op_set_random_realloc(wait_op);
