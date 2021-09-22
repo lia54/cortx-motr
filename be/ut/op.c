@@ -820,6 +820,7 @@ static void be_ut_op_set_random_thread_func(void *param)
 		wcfg[i] = (struct be_ut_op_set_random_worker_cfg){
 			.bosrw_waiter = i % 2 != 0,
 			.bosrw_ops_nr = cfg->bosrt_ops_per_pair,
+			.bosrw_seed   = i,
 		};
 		m0_be_op_init(&wcfg[i].bosrw_start);
 		m0_be_op_init(&wcfg[i].bosrw_finished);
