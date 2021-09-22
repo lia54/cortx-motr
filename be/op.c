@@ -183,7 +183,8 @@ static void be_op_done(struct m0_be_op *op)
 
 	M0_ASSERT(ergo(M0_IN(op->bo_kind, (M0_BE_OP_KIND_SET_AND,
 	                                   M0_BE_OP_KIND_SET_OR)),
-	                     op->bo_set_addition_finished));
+	                     _0C(op->bo_set_addition_finished) &&
+	                     _0C(op->bo_set_triggered_by != NULL)));
 	if (op->bo_kind == M0_BE_OP_KIND_SET_OR) {
 		generation = op->bo_generation;
 		while ((child = bos_tlist_head(&op->bo_children)) != NULL) {
@@ -395,8 +396,8 @@ M0_INTERNAL void m0_be_op_set_add_finish(struct m0_be_op *op)
 	M0_ASSERT(M0_IN(op->bo_kind, (M0_BE_OP_KIND_SET_AND,
 	                              M0_BE_OP_KIND_SET_OR)));
 	m0_be_op_lock(op);
-	op->bo_set_addition_finished = true;
 	M0_ASSERT(op->bo_set_triggered_by == NULL);
+	op->bo_set_addition_finished = true;
 	M0_ASSERT(!bos_tlist_is_empty(&op->bo_children));
 	/*
 	 * Concurrent additions to the list couldn't happen because of
@@ -416,7 +417,7 @@ M0_INTERNAL void m0_be_op_set_add_finish(struct m0_be_op *op)
 		 * M0_BE_OP_KIND_SET_OR op called by a child of the op.
 		 */
 		if (child->bo_parent != op) {
-			M0_LOG(M0_ALWAYS, "concurrent removal of "
+			M0_LOG(M0_DEBUG, "concurrent removal of "
 			       "child=%p from op=%p happened", child, op);
 			m0_be_op_unlock(child);
 			m0_be_op_unlock(op);
@@ -430,7 +431,7 @@ M0_INTERNAL void m0_be_op_set_add_finish(struct m0_be_op *op)
 		 * to only check the trigger here.
 		 */
 		if (op->bo_set_triggered_by != NULL) {
-			M0_LOG(M0_ALWAYS, "op=%p: had been triggered "
+			M0_LOG(M0_DEBUG, "op=%p: had been triggered "
 			       "somewhere else", op);
 			m0_be_op_unlock(child);
 			m0_be_op_unlock(op);

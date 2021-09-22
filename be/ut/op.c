@@ -635,7 +635,7 @@ void m0_be_ut_op_set_and_tree(void)
 enum {
 	BE_UT_OSR_THREAD_NR      = 0x10,
 	BE_UT_OSR_WORKER_PAIR_NR = 0x20,
-	BE_UT_OSR_OPS_PER_PAIR   = 0x2,
+	BE_UT_OSR_OPS_PER_PAIR   = 0x8,
 	BE_UT_OSR_ITER_PER_PAIR  = 0x10,
 	BE_UT_OSR_SLEEP_MS       = 3,
 };
