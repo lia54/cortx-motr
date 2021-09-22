@@ -413,8 +413,11 @@ M0_INTERNAL void m0_be_op_set_add_finish(struct m0_be_op *op)
 		m0_be_op_lock(child);
 		m0_be_op_lock(op);
 		/*
-		 * Concurrent removal could happen in be_op_done() for
-		 * M0_BE_OP_KIND_SET_OR op called by a child of the op.
+		 * Concurrent removal could happen in be_op_done():
+		 * - for M0_BE_OP_KIND_SET_OR op called by a child of the op in
+		 *   the removal loop for op;
+		 * - for M0_BE_OP_KIND_SET_AND op when the last child of the op
+		 *   transitions to M0_BTS_DONE state.
 		 */
 		if (child->bo_parent != op) {
 			M0_LOG(M0_DEBUG, "concurrent removal of "
