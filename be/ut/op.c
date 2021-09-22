@@ -654,6 +654,19 @@ struct be_ut_op_set_random_worker_cfg {
 };
 
 
+static struct m0_be_op *be_ut_op_set_random_realloc(struct m0_be_op *op)
+{
+	struct m0_be_op *op_new;
+
+	m0_be_op_fini(op);
+	/* allow new op before freeing old to not to get the same memory */
+	M0_ALLOC_PTR(op_new);
+	M0_ASSERT(op_new != NULL);
+	m0_free(op);
+	m0_be_op_init(op_new);
+	return op_new;
+}
+
 static int be_ut_op_set_random_find(struct m0_be_op *needle,
                                     struct m0_be_op *haystack,
                                     int haystack_size)
@@ -719,6 +732,12 @@ be_ut_op_set_random_worker_waiter(struct be_ut_op_set_random_worker_cfg *cfg)
 		m0_be_op_set_add_finish(op);
 		m0_be_op_wait(op);
 		trigger = m0_be_op_set_triggered_by(op);
+		if (i < cfg->bosrw_ops_nr / 4 ||
+		    i > 3 * cfg->bosrw_ops_nr / 4) {
+			m0_be_op_reset(op);
+		} else {
+			op = be_ut_op_set_random_realloc(op);
+		}
 		M0_LOG(M0_DEBUG, "cfg=%p cfg->bosrw_ops=%p trigger=%p",
 		       cfg, cfg->bosrw_ops, trigger);
 		m0_be_op_reset(trigger);
@@ -727,7 +746,6 @@ be_ut_op_set_random_worker_waiter(struct be_ut_op_set_random_worker_cfg *cfg)
 		M0_UT_ASSERT(cfg->bosrw_time_done_received[index] ==
 		             M0_TIME_NEVER);
 		cfg->bosrw_time_done_received[index] = m0_time_now();
-		m0_be_op_reset(op);
 	}
 	m0_be_op_fini(op);
 	m0_free(op);
@@ -762,11 +780,12 @@ static void be_ut_op_set_random_worker(void *param)
 	struct be_ut_op_set_random_worker_cfg *cfg = param;
 	struct m0_be_op                       *op;
 	uint64_t                               seed = cfg->bosrw_seed;
+	uint64_t                               i;
 
 	M0_ALLOC_PTR(op);
 	M0_ASSERT(op != NULL);
 	m0_be_op_init(op);
-	while (1) {
+	for (i = 0;; ++i) {
 		m0_be_op_make_set_or(op);
 		m0_be_op_set_add(op, &cfg->bosrw_start);
 		m0_be_op_set_add(op, cfg->bosrw_quit);
@@ -779,7 +798,11 @@ static void be_ut_op_set_random_worker(void *param)
 		}
 		M0_UT_ASSERT(m0_be_op_set_triggered_by(op) ==
 			     &cfg->bosrw_start);
-		m0_be_op_reset(op);
+		if (i % 6 < 3) {
+			m0_be_op_reset(op);
+		} else {
+			op = be_ut_op_set_random_realloc(op);
+		}
 		m0_be_op_reset(&cfg->bosrw_start);
 		m0_be_op_active(&cfg->bosrw_finished);
 		if (cfg->bosrw_waiter)
@@ -806,6 +829,7 @@ static void be_ut_op_set_random_thread_func(void *param)
 	struct m0_be_op                       *op;
 	struct m0_be_op                       *ops;
 	struct m0_be_op                       *wait_op;
+	uint64_t                               counter;
 	uint64_t                               seed = cfg->bosrt_index;
 	int                                    pair_nr;
 	int                                    index;
@@ -863,6 +887,7 @@ static void be_ut_op_set_random_thread_func(void *param)
 		pos[i] = -1;
 	}
 	m0_ut_threads_start(&descr, pair_nr * 2, wcfg, sizeof *wcfg);
+	counter = 0;
 	while (m0_exists(j, pair_nr, pos[j] < cfg->bosrt_iter_per_pair)) {
 		m0_be_op_make_set_or(wait_op);
 		for (i = 0; i < pair_nr; ++i) {
@@ -872,7 +897,12 @@ static void be_ut_op_set_random_thread_func(void *param)
 		m0_be_op_set_add_finish(wait_op);
 		m0_be_op_wait(wait_op);
 		op = m0_be_op_set_triggered_by(wait_op);
-		m0_be_op_reset(wait_op);
+		if (counter % (cfg->bosrt_iter_per_pair / 2) <
+		    cfg->bosrt_iter_per_pair / 4) {
+			m0_be_op_reset(wait_op);
+		} else {
+			wait_op = be_ut_op_set_random_realloc(wait_op);
+		}
 		index = be_ut_op_set_random_find(op, ops, pair_nr);
 		m0_be_op_reset(&ops[index]);
 		m0_be_op_reset(&wcfg[2 * index].bosrw_finished);
@@ -897,6 +927,7 @@ static void be_ut_op_set_random_thread_func(void *param)
 			m0_be_op_active(&wcfg[2 * index + 1].bosrw_start);
 			m0_be_op_done(&wcfg[2 * index + 1].bosrw_start);
 		}
+		++counter;
 	}
 	for (i = 0; i < pair_nr * 2; ++i) {
 		m0_be_op_active(wcfg[i].bosrw_quit);
