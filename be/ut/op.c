@@ -284,7 +284,7 @@ void m0_be_ut_op_set_and_usecase(void)
 }
 
 enum {
-	BE_UT_OP_SET_OR_USECASE_NR = 0x100,
+	BE_UT_OP_SET_OR_USECASE_NR = 0x80,
 };
 
 void m0_be_ut_op_set_or_usecase(void)

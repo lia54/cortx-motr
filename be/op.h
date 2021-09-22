@@ -254,6 +254,7 @@ M0_INTERNAL void m0_be_op_set_add(struct m0_be_op *parent,
  *
  * @note other ops MUST NOT be added be added to the op set after this call.
  * @note the op set MUST have at least one children.
+ * @note op set children SHOULD NOT be finalized before this function completes.
  */
 M0_INTERNAL void m0_be_op_set_add_finish(struct m0_be_op *op);
 
