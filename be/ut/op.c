@@ -647,7 +647,7 @@ struct be_ut_op_set_random_worker_cfg {
 	unsigned        *bosrw_order;
 	struct m0_be_op  bosrw_start;
 	struct m0_be_op  bosrw_finished;
-	struct m0_be_op  bosrw_quit;
+	struct m0_be_op *bosrw_quit;
 	m0_time_t       *bosrw_time_done;
 	m0_time_t       *bosrw_time_done_received;
 	uint64_t         bosrw_seed;
@@ -769,11 +769,14 @@ static void be_ut_op_set_random_worker(void *param)
 	while (1) {
 		m0_be_op_make_set_or(op);
 		m0_be_op_set_add(op, &cfg->bosrw_start);
-		m0_be_op_set_add(op, &cfg->bosrw_quit);
+		m0_be_op_set_add(op, cfg->bosrw_quit);
 		m0_be_op_set_add_finish(op);
 		m0_be_op_wait(op);
-		if (m0_be_op_set_triggered_by(op) == &cfg->bosrw_quit)
+		if (m0_be_op_set_triggered_by(op) == cfg->bosrw_quit) {
+			m0_be_op_fini(cfg->bosrw_quit);
+			m0_free(cfg->bosrw_quit);
 			break;
+		}
 		M0_UT_ASSERT(m0_be_op_set_triggered_by(op) ==
 			     &cfg->bosrw_start);
 		m0_be_op_reset(op);
@@ -822,9 +825,11 @@ static void be_ut_op_set_random_thread_func(void *param)
 			.bosrw_ops_nr = cfg->bosrt_ops_per_pair,
 			.bosrw_seed   = i,
 		};
+		M0_ALLOC_PTR(wcfg[i].bosrw_quit);
+		M0_ASSERT(wcfg[i].bosrw_quit != NULL);
 		m0_be_op_init(&wcfg[i].bosrw_start);
 		m0_be_op_init(&wcfg[i].bosrw_finished);
-		m0_be_op_init(&wcfg[i].bosrw_quit);
+		m0_be_op_init(wcfg[i].bosrw_quit);
 		if (i % 2 == 0) {
 			M0_ALLOC_ARR(wcfg[i].bosrw_ops, wcfg[i].bosrw_ops_nr);
 			M0_ASSERT(wcfg[i].bosrw_ops != NULL);
@@ -894,8 +899,8 @@ static void be_ut_op_set_random_thread_func(void *param)
 		}
 	}
 	for (i = 0; i < pair_nr * 2; ++i) {
-		m0_be_op_active(&wcfg[i].bosrw_quit);
-		m0_be_op_done(&wcfg[i].bosrw_quit);
+		m0_be_op_active(wcfg[i].bosrw_quit);
+		m0_be_op_done(wcfg[i].bosrw_quit);
 	}
 	m0_ut_threads_stop(&descr);
 	for (i = 0; i < pair_nr; ++i)
@@ -907,7 +912,6 @@ static void be_ut_op_set_random_thread_func(void *param)
 	for (i = 0; i < pair_nr * 2; ++i) {
 		m0_free(wcfg[i].bosrw_time_done_received);
 		m0_free(wcfg[i].bosrw_time_done);
-		m0_be_op_fini(&wcfg[i].bosrw_quit);
 		m0_be_op_fini(&wcfg[i].bosrw_finished);
 		m0_be_op_fini(&wcfg[i].bosrw_start);
 		m0_free(wcfg[i].bosrw_order);
