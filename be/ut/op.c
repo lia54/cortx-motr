@@ -760,8 +760,6 @@ be_ut_op_set_random_worker_doer(struct be_ut_op_set_random_worker_cfg *cfg,
 	int      i;
 	int      index;
 
-	// TODO alloc and free op and alloc and free memory regions of different
-	// size
 	M0_ENTRY("cfg=%p cfg->bosrw_ops=%p", cfg, cfg->bosrw_ops);
 	for (i = 0; i < cfg->bosrw_ops_nr; ++i) {
 		index = cfg->bosrw_order[i];
